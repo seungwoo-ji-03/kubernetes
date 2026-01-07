@@ -106,7 +106,7 @@ type Controller struct {
 	podIndexer cache.Indexer
 
 	// recorder is used to record events in the API server
-	recorder record.EventRecorder
+	recorder record.EventRecorderLogger
 
 	queue workqueue.TypedRateLimitingInterface[string]
 
@@ -416,7 +416,7 @@ func (ec *Controller) Run(ctx context.Context, workers int) {
 	eventBroadcaster := record.NewBroadcaster(record.WithContext(ctx))
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: ec.kubeClient.CoreV1().Events("")})
-	ec.recorder = eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "resource_claim"})
+	ec.recorder = eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "resource_claim"}).WithLogger(klog.FromContext(ctx))
 	defer eventBroadcaster.Shutdown()
 
 	logger := klog.FromContext(ctx)
@@ -511,7 +511,8 @@ func (ec *Controller) syncPod(ctx context.Context, namespace, name string) error
 	for _, podClaim := range pod.Spec.ResourceClaims {
 		if err := ec.handleClaim(ctx, pod, podClaim, &newPodClaims); err != nil {
 			if ec.recorder != nil {
-				ec.recorder.Event(pod, v1.EventTypeWarning, "FailedResourceClaimCreation", fmt.Sprintf("PodResourceClaim %s: %v", podClaim.Name, err))
+				recorder := ec.recorder.WithLogger(logger)
+				recorder.Event(pod, v1.EventTypeWarning, "FailedResourceClaimCreation", fmt.Sprintf("PodResourceClaim %s: %v", podClaim.Name, err))
 			}
 			return fmt.Errorf("pod %s/%s, PodResourceClaim %s: %v", namespace, name, podClaim.Name, err)
 		}

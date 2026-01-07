@@ -74,7 +74,7 @@ func NewController(
 	client clientset.Interface,
 ) *Controller {
 	broadcaster := record.NewBroadcaster(record.WithContext(ctx))
-	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: controllerName})
+	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: controllerName}).WithLogger(klog.FromContext(ctx))
 	c := &Controller{
 		client: client,
 		queue: workqueue.NewTypedRateLimitingQueueWithConfig(
@@ -110,7 +110,7 @@ func NewController(
 type Controller struct {
 	client           clientset.Interface
 	eventBroadcaster record.EventBroadcaster
-	eventRecorder    record.EventRecorder
+	eventRecorder    record.EventRecorderLogger
 
 	serviceCIDRLister  networkinglisters.ServiceCIDRLister
 	serviceCIDRsSynced cache.InformerSynced
@@ -284,6 +284,7 @@ func (c *Controller) processNext(ctx context.Context) bool {
 
 func (c *Controller) sync(ctx context.Context, key string) error {
 	logger := klog.FromContext(ctx)
+	recorder := c.eventRecorder.WithLogger(logger)
 	startTime := time.Now()
 	defer func() {
 		logger.V(4).Info("Finished syncing ServiceCIDR)", "ServiceCIDR", key, "elapsed", time.Since(startTime))
@@ -346,7 +347,7 @@ func (c *Controller) sync(ctx context.Context, key string) error {
 	}
 	if err := c.updateConditionIfNeeded(ctx, cidr, condition); err != nil {
 		logger.Info("error updating default ServiceCIDR status", "error", err)
-		c.eventRecorder.Eventf(cidr, v1.EventTypeWarning, "KubernetesServiceCIDRError", "The ServiceCIDR Status can not be set to Ready=True")
+		recorder.Eventf(cidr, v1.EventTypeWarning, "KubernetesServiceCIDRError", "The ServiceCIDR Status can not be set to Ready=True")
 		return err
 	}
 

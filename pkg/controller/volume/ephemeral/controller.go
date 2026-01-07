@@ -70,7 +70,7 @@ type ephemeralController struct {
 	podIndexer cache.Indexer
 
 	// recorder is used to record events in the API server
-	recorder record.EventRecorder
+	recorder record.EventRecorderLogger
 
 	queue workqueue.TypedRateLimitingInterface[string]
 }
@@ -100,7 +100,8 @@ func NewController(
 	eventBroadcaster := record.NewBroadcaster(record.WithContext(ctx))
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: kubeClient.CoreV1().Events("")})
-	ec.recorder = eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "ephemeral_volume"})
+	logger := klog.FromContext(ctx)
+	ec.recorder = eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "ephemeral_volume"}).WithLogger(logger)
 
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: ec.enqueuePod,
@@ -240,9 +241,10 @@ func (ec *ephemeralController) syncHandler(ctx context.Context, key string) erro
 		return nil
 	}
 
+	recorder := ec.recorder.WithLogger(logger)
 	for _, vol := range pod.Spec.Volumes {
 		if err := ec.handleVolume(ctx, pod, vol); err != nil {
-			ec.recorder.Event(pod, v1.EventTypeWarning, events.FailedBinding, fmt.Sprintf("ephemeral volume %s: %v", vol.Name, err))
+			recorder.Event(pod, v1.EventTypeWarning, events.FailedBinding, fmt.Sprintf("ephemeral volume %s: %v", vol.Name, err))
 			return fmt.Errorf("pod %s, ephemeral volume %s: %v", key, vol.Name, err)
 		}
 	}

@@ -78,7 +78,7 @@ type Controller struct {
 	csiTranslator     csimigration.InTreeToCSITranslator
 	seLinuxTranslator *translator.ControllerSELinuxTranslator
 	eventBroadcaster  record.EventBroadcaster
-	eventRecorder     record.EventRecorder
+	eventRecorder     record.EventRecorderLogger
 	queue             workqueue.TypedRateLimitingInterface[cache.ObjectName]
 
 	labelCache volumecache.VolumeCache
@@ -96,7 +96,7 @@ func NewController(
 ) (*Controller, error) {
 
 	eventBroadcaster := record.NewBroadcaster(record.WithContext(ctx))
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "selinux_warning"})
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "selinux_warning"}).WithLogger(klog.FromContext(ctx))
 	seLinuxTranslator := &translator.ControllerSELinuxTranslator{}
 
 	c := &Controller{
@@ -441,6 +441,7 @@ func (c *Controller) syncPodDelete(ctx context.Context, podKey cache.ObjectName)
 
 func (c *Controller) syncPod(ctx context.Context, pod *v1.Pod) error {
 	logger := klog.FromContext(ctx)
+	recorder := c.eventRecorder.WithLogger(logger)
 	logger.V(4).Info("Syncing pod", "pod", klog.KObj(pod))
 
 	errs := []error{}
@@ -471,7 +472,7 @@ func (c *Controller) syncPod(ctx context.Context, pod *v1.Pod) error {
 		if err != nil {
 			errors.Is(err, &volumeutil.MultipleSELinuxLabelsError{})
 			if volumeutil.IsMultipleSELinuxLabelsError(err) {
-				c.eventRecorder.Eventf(pod, v1.EventTypeWarning, "MultipleSELinuxLabels", "Volume %q is mounted twice with different SELinux labels inside this pod", mount)
+				recorder.Eventf(pod, v1.EventTypeWarning, "MultipleSELinuxLabels", "Volume %q is mounted twice with different SELinux labels inside this pod", mount)
 			}
 			logger.V(4).Error(err, "failed to get SELinux label", "pod", klog.KObj(pod), "volume", mount)
 			errs = append(errs, err)
@@ -533,6 +534,7 @@ func (c *Controller) syncVolume(logger klog.Logger, pod *v1.Pod, spec *volume.Sp
 }
 
 func (c *Controller) reportConflictEvents(logger klog.Logger, conflicts []volumecache.Conflict) {
+	recorder := c.eventRecorder.WithLogger(logger)
 	for _, conflict := range conflicts {
 		pod, err := c.podLister.Pods(conflict.Pod.Namespace).Get(conflict.Pod.Name)
 		if err != nil {
@@ -540,6 +542,6 @@ func (c *Controller) reportConflictEvents(logger klog.Logger, conflicts []volume
 			// It does not make sense to report a conflict that has been resolved by deleting one of the pods.
 			return
 		}
-		c.eventRecorder.Event(pod, v1.EventTypeNormal, conflict.EventReason, conflict.EventMessage())
+		recorder.Event(pod, v1.EventTypeNormal, conflict.EventReason, conflict.EventMessage())
 	}
 }
