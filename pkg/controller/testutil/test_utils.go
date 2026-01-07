@@ -40,6 +40,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	ref "k8s.io/client-go/tools/reference"
 	utilnode "k8s.io/component-helpers/node/topology"
 	"k8s.io/klog/v2"
@@ -400,6 +401,11 @@ type FakeRecorder struct {
 	source v1.EventSource
 	Events []*v1.Event
 	clock  clock.Clock
+}
+
+// WithLogger satisfies record.EventRecorderLogger; logger is ignored for this fake.
+func (f *FakeRecorder) WithLogger(klog.Logger) record.EventRecorderLogger {
+	return f
 }
 
 // Event emits a fake event to the fake recorder

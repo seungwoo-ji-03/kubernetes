@@ -92,7 +92,7 @@ type Controller struct {
 	eventLogger *klog.Logger
 
 	client        clientset.Interface
-	recorder      record.EventRecorder
+	recorder      record.EventRecorderLogger
 	podInformer   coreinformers.PodInformer
 	podLister     corelisters.PodLister
 	claimInformer resourceinformers.ResourceClaimInformer
@@ -1579,6 +1579,7 @@ func (tc *Controller) emitPodDeletionEvent(podRef tainteviction.NamespacedObject
 	if tc.recorder == nil {
 		return
 	}
+	logger := tc.logger
 	ref := &v1.ObjectReference{
 		APIVersion: "v1",
 		Kind:       "Pod",
@@ -1586,13 +1587,14 @@ func (tc *Controller) emitPodDeletionEvent(podRef tainteviction.NamespacedObject
 		Namespace:  podRef.Namespace,
 		UID:        podRef.UID,
 	}
-	tc.recorder.Eventf(ref, v1.EventTypeNormal, "DeviceTaintManagerEviction", "Marking for deletion")
+	tc.recorder.WithLogger(logger).Eventf(ref, v1.EventTypeNormal, "DeviceTaintManagerEviction", "Marking for deletion")
 }
 
 func (tc *Controller) emitCancelPodDeletionEvent(podRef tainteviction.NamespacedObject) {
 	if tc.recorder == nil {
 		return
 	}
+	logger := tc.logger
 	ref := &v1.ObjectReference{
 		APIVersion: "v1",
 		Kind:       "Pod",
@@ -1600,7 +1602,7 @@ func (tc *Controller) emitCancelPodDeletionEvent(podRef tainteviction.Namespaced
 		Namespace:  podRef.Namespace,
 		UID:        podRef.UID,
 	}
-	tc.recorder.Eventf(ref, v1.EventTypeNormal, "DeviceTaintManagerEviction", "Cancelling deletion")
+	tc.recorder.WithLogger(logger).Eventf(ref, v1.EventTypeNormal, "DeviceTaintManagerEviction", "Cancelling deletion")
 }
 
 func newNamespacedName(obj metav1.Object) types.NamespacedName {
