@@ -83,7 +83,7 @@ type managerImpl struct {
 	// nodeRef is a reference to the node
 	nodeRef *v1.ObjectReference
 	// used to record events about the node
-	recorder record.EventRecorder
+	recorder record.EventRecorderLogger
 	// used to measure usage stats on system
 	summaryProvider stats.SummaryProvider
 	// records when a threshold was first observed
@@ -118,7 +118,7 @@ func NewManager(
 	killPodFunc KillPodFunc,
 	imageGC ImageGC,
 	containerGC ContainerGC,
-	recorder record.EventRecorder,
+	recorder record.EventRecorderLogger,
 	nodeRef *v1.ObjectReference,
 	clock clock.WithTicker,
 	localStorageCapacityIsolation bool,
@@ -381,7 +381,8 @@ func (m *managerImpl) synchronize(ctx context.Context, diskInfoProvider DiskInfo
 	logger.Info("Eviction manager: attempting to reclaim", "resourceName", resourceToReclaim)
 
 	// record an event about the resources we are now attempting to reclaim via eviction
-	m.recorder.Eventf(m.nodeRef, v1.EventTypeWarning, "EvictionThresholdMet", "Attempting to reclaim %s", resourceToReclaim)
+	recorder := m.recorder.WithLogger(logger)
+	recorder.Eventf(m.nodeRef, v1.EventTypeWarning, "EvictionThresholdMet", "Attempting to reclaim %s", resourceToReclaim)
 
 	// check if there are node-level resources we can reclaim to reduce pressure before evicting end-user pods.
 	if m.reclaimNodeLevelResources(ctx, thresholdToReclaim.Signal, resourceToReclaim) {
@@ -617,7 +618,8 @@ func (m *managerImpl) evictPod(logger klog.Logger, pod *v1.Pod, gracePeriodOverr
 		return false
 	}
 	// record that we are evicting the pod
-	m.recorder.AnnotatedEventf(pod, annotations, v1.EventTypeWarning, Reason, evictMsg)
+	recorder := m.recorder.WithLogger(logger)
+	recorder.AnnotatedEventf(pod, annotations, v1.EventTypeWarning, Reason, evictMsg)
 	// this is a blocking call and should only return when the pod and its containers are killed.
 	logger.V(3).Info("Evicting pod", "pod", klog.KObj(pod), "podUID", pod.UID, "message", evictMsg)
 	err := m.killPodFunc(pod, true, &gracePeriodOverride, func(status *v1.PodStatus) {

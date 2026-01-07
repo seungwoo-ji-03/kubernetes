@@ -56,7 +56,7 @@ type handlerRunner struct {
 	httpDoer         kubetypes.HTTPDoer
 	commandRunner    kubecontainer.CommandRunner
 	containerManager podStatusProvider
-	eventRecorder    record.EventRecorder
+	eventRecorder    record.EventRecorderLogger
 }
 
 type podStatusProvider interface {
@@ -64,7 +64,7 @@ type podStatusProvider interface {
 }
 
 // NewHandlerRunner returns a configured lifecycle handler for a container.
-func NewHandlerRunner(httpDoer kubetypes.HTTPDoer, commandRunner kubecontainer.CommandRunner, containerManager podStatusProvider, eventRecorder record.EventRecorder) kubecontainer.HandlerRunner {
+func NewHandlerRunner(httpDoer kubetypes.HTTPDoer, commandRunner kubecontainer.CommandRunner, containerManager podStatusProvider, eventRecorder record.EventRecorderLogger) kubecontainer.HandlerRunner {
 	return &handlerRunner{
 		httpDoer:         httpDoer,
 		commandRunner:    commandRunner,
@@ -124,7 +124,7 @@ func (hr *handlerRunner) runSleepHandler(ctx context.Context, seconds int64) err
 	}
 }
 
-func (hr *handlerRunner) runHTTPHandler(ctx context.Context, pod *v1.Pod, container *v1.Container, handler *v1.LifecycleHandler, eventRecorder record.EventRecorder) error {
+func (hr *handlerRunner) runHTTPHandler(ctx context.Context, pod *v1.Pod, container *v1.Container, handler *v1.LifecycleHandler, eventRecorder record.EventRecorderLogger) error {
 	logger := klog.FromContext(ctx)
 	host := handler.HTTPGet.Host
 	podIP := host
@@ -161,7 +161,7 @@ func (hr *handlerRunner) runHTTPHandler(ctx context.Context, pod *v1.Pod, contai
 			metrics.LifecycleHandlerHTTPFallbacks.Inc()
 			if eventRecorder != nil {
 				// report the fallback with an event
-				eventRecorder.Event(pod, v1.EventTypeWarning, "LifecycleHTTPFallback", fmt.Sprintf("request to HTTPS lifecycle hook %s got HTTP response, retry with HTTP succeeded", req.URL.Host))
+				eventRecorder.WithLogger(logger).Event(pod, v1.EventTypeWarning, "LifecycleHTTPFallback", fmt.Sprintf("request to HTTPS lifecycle hook %s got HTTP response, retry with HTTP succeeded", req.URL.Host))
 			}
 			err = nil
 		}

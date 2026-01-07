@@ -125,7 +125,7 @@ type realImageGCManager struct {
 	statsProvider StatsProvider
 
 	// Recorder for Kubernetes events.
-	recorder record.EventRecorder
+	recorder record.EventRecorderLogger
 
 	// Reference to this node.
 	nodeRef *v1.ObjectReference
@@ -188,7 +188,7 @@ type imageRecord struct {
 }
 
 // NewImageGCManager instantiates a new ImageGCManager object.
-func NewImageGCManager(runtime container.Runtime, statsProvider StatsProvider, postGCHooks []PostImageGCHook, recorder record.EventRecorder, nodeRef *v1.ObjectReference, policy ImageGCPolicy, tracerProvider trace.TracerProvider) (ImageGCManager, error) {
+func NewImageGCManager(runtime container.Runtime, statsProvider StatsProvider, postGCHooks []PostImageGCHook, recorder record.EventRecorderLogger, nodeRef *v1.ObjectReference, policy ImageGCPolicy, tracerProvider trace.TracerProvider) (ImageGCManager, error) {
 	// Validate policy.
 	if policy.HighThresholdPercent < 0 || policy.HighThresholdPercent > 100 {
 		return nil, fmt.Errorf("invalid HighThresholdPercent %d, must be in range [0-100]", policy.HighThresholdPercent)
@@ -349,6 +349,7 @@ func (im *realImageGCManager) GarbageCollect(ctx context.Context, beganGC time.T
 	ctx, otelSpan := im.tracer.Start(ctx, "Images/GarbageCollect")
 	logger := klog.FromContext(ctx)
 	defer otelSpan.End()
+	recorder := im.recorder.WithLogger(logger)
 
 	freeTime := time.Now()
 	images, err := im.imagesInEvictionOrder(ctx, freeTime)
@@ -383,7 +384,7 @@ func (im *realImageGCManager) GarbageCollect(ctx context.Context, beganGC time.T
 	// Check valid capacity.
 	if capacity == 0 {
 		err := goerrors.New("invalid capacity 0 on image filesystem")
-		im.recorder.Eventf(im.nodeRef, v1.EventTypeWarning, events.InvalidDiskCapacity, err.Error())
+		recorder.Eventf(im.nodeRef, v1.EventTypeWarning, events.InvalidDiskCapacity, err.Error())
 		return err
 	}
 
@@ -408,7 +409,7 @@ func (im *realImageGCManager) GarbageCollect(ctx context.Context, beganGC time.T
 				"Failed to free sufficient space by deleting unused images (freed %d bytes). "+
 				"Investigate disk usage, as it could be used by active images, logs, volumes, or other data.",
 				usagePercent, formatSize(capacity), freed)
-			im.recorder.Eventf(im.nodeRef, v1.EventTypeWarning, events.FreeDiskSpaceFailed, "%s", message)
+			recorder.Eventf(im.nodeRef, v1.EventTypeWarning, events.FreeDiskSpaceFailed, "%s", message)
 			return fmt.Errorf("%s", message)
 		}
 	}
@@ -578,7 +579,9 @@ func (im *realImageGCManager) imagesInEvictionOrder(ctx context.Context, freeTim
 			imageID := getImageIDFromTuple(image)
 			// Ensure imageID is valid or else continue
 			if imageID == "" {
-				im.recorder.Eventf(im.nodeRef, v1.EventTypeWarning, "ImageID is not valid, skipping, ImageID: %v", imageID)
+				logger := klog.FromContext(ctx)
+				recorder := im.recorder.WithLogger(logger)
+				recorder.Eventf(im.nodeRef, v1.EventTypeWarning, "ImageID is not valid, skipping, ImageID: %v", imageID)
 				continue
 			}
 			images = append(images, evictionInfo{
