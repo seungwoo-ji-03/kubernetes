@@ -324,7 +324,7 @@ type Dependencies struct {
 	OSInterface               kubecontainer.OSInterface
 	PodConfig                 *config.PodConfig
 	ProbeManager              prober.Manager
-	Recorder                  record.EventRecorder
+	Recorder                  record.EventRecorderLogger
 	Subpather                 subpath.Interface
 	TracerProvider            trace.TracerProvider
 	VolumePlugins             []volume.VolumePlugin
